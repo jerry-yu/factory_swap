@@ -13,11 +13,11 @@ use borsh::{BorshDeserialize, BorshSerialize};
 #[derive(BorshSerialize, BorshDeserialize, Debug)]
 pub enum FactoryInstruction {
     ///   0. `[signer]` owner of source token a account
-    ///   0. `[writable]` A account from Token A. source account
-    ///   1. `[writable]` B account from Token B.  destination account
-    ///   2. `[]` mint authority ： Token A，Token B same。 maybe multi-sign
+    ///   1. `[writable]` A account from Token A. source account
+    ///   2. `[writable]` B account from Token B.  destination account
     ///   3. `[]` token_a mint.
     ///   4. `[]` token_b mint.
-    ///   5. '[]` Token program id
+    ///   5. `[]` mint authority ： Token A，Token B same。 maybe multi-sign
+    ///   6. '[]` Token program id
     Recv(u64),
 }
