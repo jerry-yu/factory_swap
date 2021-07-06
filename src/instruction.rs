@@ -1,3 +1,4 @@
+use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     instruction::{AccountMeta, Instruction},
     program_error::ProgramError,
@@ -6,8 +7,6 @@ use solana_program::{
 };
 use std::convert::TryInto;
 use std::mem::size_of;
-use borsh::{BorshDeserialize, BorshSerialize};
-
 
 /// Define the type of state stored in accounts
 #[derive(BorshSerialize, BorshDeserialize, Debug)]

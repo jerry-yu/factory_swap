@@ -6,7 +6,6 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-
 pub mod instruction;
 pub mod processor;
 
