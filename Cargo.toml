@@ -1,6 +1,6 @@
 
 [package]
-name = "solana-bpf-helloworld"
+name = "factory_swap"
 version = "0.0.1"
 description = "Example template program written in Rust"
 authors = ["Solana Maintainers <maintainers@solana.com>"]
@@ -20,6 +20,7 @@ spl-math = { version = "0.1", features = [ "no-entrypoint" ] }
 spl-token = { version = "3.1", features = [ "no-entrypoint" ] }
 
 [dev-dependencies]
+solana-sdk = "1.7.4"
 
 [lib]
 name = "helloworld"

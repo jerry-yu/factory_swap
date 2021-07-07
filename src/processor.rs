@@ -121,3 +121,82 @@ impl Processor {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        // instruction::{
+        //     deposit_all_token_types, deposit_single_token_type_exact_amount_in, initialize, swap,
+        //     withdraw_all_token_types, withdraw_single_token_type_exact_amount_out,
+        // },
+    };
+    use solana_program::{instruction::Instruction, program_stubs, rent::Rent};
+    use solana_sdk::account::{create_account_for_test, create_is_signer_account_infos, Account};
+    use spl_token::{
+        error::TokenError,
+        instruction::{
+            approve, initialize_account, initialize_mint, mint_to, revoke, set_authority,
+            AuthorityType,
+        },
+    };
+
+    // Test program id for the swap program.
+    const SWAP_PROGRAM_ID: Pubkey = Pubkey::new_from_array([2u8; 32]);
+
+    struct TestSyscallStubs {}
+    impl program_stubs::SyscallStubs for TestSyscallStubs {
+        fn sol_invoke_signed(
+            &self,
+            instruction: &Instruction,
+            account_infos: &[AccountInfo],
+            signers_seeds: &[&[&[u8]]],
+        ) -> ProgramResult {
+            msg!("TestSyscallStubs::sol_invoke_signed()");
+
+            let mut new_account_infos = vec![];
+
+            // mimic check for token program in accounts
+            if !account_infos.iter().any(|x| *x.key == spl_token::id()) {
+                return Err(ProgramError::InvalidAccountData);
+            }
+
+            for meta in instruction.accounts.iter() {
+                for account_info in account_infos.iter() {
+                    if meta.pubkey == *account_info.key {
+                        let mut new_account_info = account_info.clone();
+                        for seeds in signers_seeds.iter() {
+                            let signer =
+                                Pubkey::create_program_address(&seeds, &SWAP_PROGRAM_ID).unwrap();
+                            if *account_info.key == signer {
+                                new_account_info.is_signer = true;
+                            }
+                        }
+                        new_account_infos.push(new_account_info);
+                    }
+                }
+            }
+
+            spl_token::processor::Processor::process(
+                &instruction.program_id,
+                &new_account_infos,
+                &instruction.data,
+            )
+        }
+    }
+
+    fn test_syscall_stubs() {
+        use std::sync::Once;
+        static ONCE: Once = Once::new();
+
+        ONCE.call_once(|| {
+            program_stubs::set_syscall_stubs(Box::new(TestSyscallStubs {}));
+        });
+    }
+
+
+
+
+
+
+}
