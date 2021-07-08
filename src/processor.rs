@@ -125,12 +125,6 @@ impl Processor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        // instruction::{
-        //     deposit_all_token_types, deposit_single_token_type_exact_amount_in, initialize, swap,
-        //     withdraw_all_token_types, withdraw_single_token_type_exact_amount_out,
-        // },
-    };
     use solana_program::{instruction::Instruction, program_stubs, rent::Rent};
     use solana_sdk::account::{create_account_for_test, create_is_signer_account_infos, Account};
     use spl_token::{
@@ -194,9 +188,177 @@ mod tests {
         });
     }
 
+    // pub fn setup_token_accounts(
+    //     &mut self,
+    //     mint_owner: &Pubkey,
+    //     account_owner: &Pubkey,
+    //     a_amount: u64,
+    //     b_amount: u64,
+    //     pool_amount: u64,
+    // ) -> (Pubkey, Account, Pubkey, Account, Pubkey, Account) {
+    //     let (token_a_key, token_a_account) = mint_token(
+    //         &spl_token::id(),
+    //         &self.token_a_mint_key,
+    //         &mut self.token_a_mint_account,
+    //         &mint_owner,
+    //         &account_owner,
+    //         a_amount,
+    //     );
+    //     let (token_b_key, token_b_account) = mint_token(
+    //         &spl_token::id(),
+    //         &self.token_b_mint_key,
+    //         &mut self.token_b_mint_account,
+    //         &mint_owner,
+    //         &account_owner,
+    //         b_amount,
+    //     );
+    //     let (pool_key, pool_account) = mint_token(
+    //         &spl_token::id(),
+    //         &self.pool_mint_key,
+    //         &mut self.pool_mint_account,
+    //         &self.authority_key,
+    //         &account_owner,
+    //         pool_amount,
+    //     );
+    //     (
+    //         token_a_key,
+    //         token_a_account,
+    //         token_b_key,
+    //         token_b_account,
+    //         pool_key,
+    //         pool_account,
+    //     )
+    // }
 
+    fn mint_minimum_balance() -> u64 {
+        Rent::default().minimum_balance(spl_token::state::Mint::get_packed_len())
+    }
 
+    fn account_minimum_balance() -> u64 {
+        Rent::default().minimum_balance(spl_token::state::Account::get_packed_len())
+    }
 
+    fn do_process_instruction(
+        instruction: Instruction,
+        accounts: Vec<&mut Account>,
+    ) -> ProgramResult {
+        test_syscall_stubs();
 
+        // approximate the logic in the actual runtime which runs the instruction
+        // and only updates accounts if the instruction is successful
+        let mut account_clones = accounts.iter().map(|x| (*x).clone()).collect::<Vec<_>>();
+        let mut meta = instruction
+            .accounts
+            .iter()
+            .zip(account_clones.iter_mut())
+            .map(|(account_meta, account)| (&account_meta.pubkey, account_meta.is_signer, account))
+            .collect::<Vec<_>>();
+        let mut account_infos = create_is_signer_account_infos(&mut meta);
+        let res = if instruction.program_id == SWAP_PROGRAM_ID {
+            Processor::process_instruction(
+                &instruction.program_id,
+                &account_infos,
+                &instruction.data,
+            )
+        } else {
+            spl_token::processor::Processor::process(
+                &instruction.program_id,
+                &account_infos,
+                &instruction.data,
+            )
+        };
 
+        if res.is_ok() {
+            let mut account_metas = instruction
+                .accounts
+                .iter()
+                .zip(accounts)
+                .map(|(account_meta, account)| (&account_meta.pubkey, account))
+                .collect::<Vec<_>>();
+            for account_info in account_infos.iter_mut() {
+                for account_meta in account_metas.iter_mut() {
+                    if account_info.key == account_meta.0 {
+                        let account = &mut account_meta.1;
+                        account.owner = *account_info.owner;
+                        account.lamports = **account_info.lamports.borrow();
+                        account.data = account_info.data.borrow().to_vec();
+                    }
+                }
+            }
+        }
+        res
+    }
+
+    fn mint_token(
+        program_id: &Pubkey,
+        mint_key: &Pubkey,
+        mut mint_account: &mut Account,
+        mint_authority_key: &Pubkey,
+        account_owner_key: &Pubkey,
+        amount: u64,
+    ) -> (Pubkey, Account) {
+        let account_key = Pubkey::new_unique();
+        let mut account_account = Account::new(
+            account_minimum_balance(),
+            spl_token::state::Account::get_packed_len(),
+            &program_id,
+        );
+        let mut mint_authority_account = Account::default();
+        let mut rent_sysvar_account = create_account_for_test(&Rent::free());
+
+        do_process_instruction(
+            initialize_account(&program_id, &account_key, &mint_key, account_owner_key).unwrap(),
+            vec![
+                &mut account_account,
+                &mut mint_account,
+                &mut mint_authority_account,
+                &mut rent_sysvar_account,
+            ],
+        )
+        .unwrap();
+
+        if amount > 0 {
+            do_process_instruction(
+                mint_to(
+                    &program_id,
+                    &mint_key,
+                    &account_key,
+                    &mint_authority_key,
+                    &[],
+                    amount,
+                )
+                .unwrap(),
+                vec![
+                    &mut mint_account,
+                    &mut account_account,
+                    &mut mint_authority_account,
+                ],
+            )
+            .unwrap();
+        }
+
+        (account_key, account_account)
+    }
+
+    fn create_mint(
+        program_id: &Pubkey,
+        authority_key: &Pubkey,
+        freeze_authority: Option<&Pubkey>,
+    ) -> (Pubkey, Account) {
+        let mint_key = Pubkey::new_unique();
+        let mut mint_account = Account::new(
+            mint_minimum_balance(),
+            spl_token::state::Mint::get_packed_len(),
+            &program_id,
+        );
+        let mut rent_sysvar_account = create_account_for_test(&Rent::free());
+
+        do_process_instruction(
+            initialize_mint(&program_id, &mint_key, authority_key, freeze_authority, 2).unwrap(),
+            vec![&mut mint_account, &mut rent_sysvar_account],
+        )
+        .unwrap();
+
+        (mint_key, mint_account)
+    }
 }
