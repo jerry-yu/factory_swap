@@ -32,7 +32,7 @@ impl Processor {
     ) -> ProgramResult {
         msg!("process_instruction");
 
-        let inst = FactoryInstruction::try_from_slice(instruction_data)?;
+        let inst = FactoryInstruction::unpack(instruction_data)?;
         match inst {
             FactoryInstruction::Recv(amount) => {
                 let accounts_iter = &mut accounts.iter();
@@ -98,26 +98,6 @@ impl Processor {
                 );
             }
         }
-
-        // // Iterating accounts is safer then indexing
-        // let accounts_iter = &mut accounts.iter();
-
-        // // Get the account to say hello to
-        // let account = next_account_info(accounts_iter)?;
-
-        // // The account must be owned by the program in order to modify its data
-        // if account.owner != program_id {
-        //     msg!("Greeted account does not have the correct program id");
-        //     return Err(ProgramError::IncorrectProgramId);
-        // }
-
-        // // Increment and store the number of times the account has been greeted
-        // let mut greeting_account = GreetingAccount::try_from_slice(&account.data.borrow())?;
-        // greeting_account.counter += 1;
-        // greeting_account.serialize(&mut &mut account.data.borrow_mut()[..])?;
-
-        // msg!("Greeted {} time(s)!", greeting_account.counter);
-
         Ok(())
     }
 }
@@ -125,6 +105,7 @@ impl Processor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::instruction::{instruction_recv, FactoryInstruction};
     use solana_program::{instruction::Instruction, program_stubs, rent::Rent};
     use solana_sdk::account::{create_account_for_test, create_is_signer_account_infos, Account};
     use spl_token::{
@@ -187,48 +168,6 @@ mod tests {
             program_stubs::set_syscall_stubs(Box::new(TestSyscallStubs {}));
         });
     }
-
-    // pub fn setup_token_accounts(
-    //     &mut self,
-    //     mint_owner: &Pubkey,
-    //     account_owner: &Pubkey,
-    //     a_amount: u64,
-    //     b_amount: u64,
-    //     pool_amount: u64,
-    // ) -> (Pubkey, Account, Pubkey, Account, Pubkey, Account) {
-    //     let (token_a_key, token_a_account) = mint_token(
-    //         &spl_token::id(),
-    //         &self.token_a_mint_key,
-    //         &mut self.token_a_mint_account,
-    //         &mint_owner,
-    //         &account_owner,
-    //         a_amount,
-    //     );
-    //     let (token_b_key, token_b_account) = mint_token(
-    //         &spl_token::id(),
-    //         &self.token_b_mint_key,
-    //         &mut self.token_b_mint_account,
-    //         &mint_owner,
-    //         &account_owner,
-    //         b_amount,
-    //     );
-    //     let (pool_key, pool_account) = mint_token(
-    //         &spl_token::id(),
-    //         &self.pool_mint_key,
-    //         &mut self.pool_mint_account,
-    //         &self.authority_key,
-    //         &account_owner,
-    //         pool_amount,
-    //     );
-    //     (
-    //         token_a_key,
-    //         token_a_account,
-    //         token_b_key,
-    //         token_b_account,
-    //         pool_key,
-    //         pool_account,
-    //     )
-    // }
 
     fn mint_minimum_balance() -> u64 {
         Rent::default().minimum_balance(spl_token::state::Mint::get_packed_len())
@@ -360,5 +299,119 @@ mod tests {
         .unwrap();
 
         (mint_key, mint_account)
+    }
+
+    struct FactoryAccountInfo {
+        //nonce: u8,
+        user_key: Pubkey,
+
+        account_a: Pubkey,
+        account_a_account: Account,
+
+        token_a_key: Pubkey,
+        token_a_account: Account,
+        token_a_mint_key: Pubkey,
+        token_a_mint_account: Account,
+
+        account_b: Pubkey,
+        account_b_account: Account,
+
+        token_b_key: Pubkey,
+        token_b_account: Account,
+        token_b_mint_key: Pubkey,
+        token_b_mint_account: Account,
+    }
+
+    impl FactoryAccountInfo {
+        pub fn new(token_a_amount: u64, token_b_amount: u64) -> Self {
+            let account_a = Pubkey::new_unique();
+            let account_a_account = Account::new(1000000, 0, &account_a);
+
+            let account_b = Pubkey::new_unique();
+            let account_b_account = Account::new(1000000, 0, &account_b);
+
+            let user_key = Pubkey::new_unique();
+
+            let (token_a_mint_key, mut token_a_mint_account) =
+                create_mint(&spl_token::id(), &user_key, None);
+            let (token_a_key, token_a_account) = mint_token(
+                &spl_token::id(),
+                &token_a_mint_key,
+                &mut token_a_mint_account,
+                &user_key,
+                &account_a,
+                token_a_amount,
+            );
+            let (token_b_mint_key, mut token_b_mint_account) =
+                create_mint(&spl_token::id(), &user_key, None);
+            let (token_b_key, token_b_account) = mint_token(
+                &spl_token::id(),
+                &token_b_mint_key,
+                &mut token_b_mint_account,
+                &user_key,
+                &account_b,
+                token_b_amount,
+            );
+
+            FactoryAccountInfo {
+                //nonce,
+                user_key,
+
+                account_a,
+                account_a_account,
+                account_b,
+                account_b_account,
+
+                token_a_key,
+                token_a_account,
+                token_a_mint_key,
+                token_a_mint_account,
+
+                token_b_key,
+                token_b_account,
+                token_b_mint_key,
+                token_b_mint_account,
+            }
+        }
+
+        ///   0. `[signer]` owner of source token a account
+        ///   1. `[writable]` A account from Token A. source account
+        ///   2. `[writable]` B account from Token B.  destination account
+        ///   3. `[]` token_a mint.
+        ///   4. `[]` token_b mint.
+        ///   5. `[]` mint authority ： Token A，Token B same。 maybe multi-sign
+        ///   6. '[]` Token program id
+
+        pub fn do_recv(&mut self) -> ProgramResult {
+            do_process_instruction(
+                instruction_recv(
+                    &SWAP_PROGRAM_ID,
+                    10,
+                    &self.account_a,
+                    &self.token_a_key,
+                    &self.token_b_key,
+                    &self.token_a_mint_key,
+                    &self.token_b_mint_key,
+                    &self.user_key,
+                )
+                .unwrap(),
+                vec![
+                    &mut self.account_a_account,
+                    &mut self.token_a_account,
+                    &mut self.token_b_account,
+                    &mut self.token_a_mint_account,
+                    &mut self.token_b_mint_account,
+                ],
+            )
+        }
+    }
+
+    #[test]
+    fn test_recv() {
+        let mut fct = FactoryAccountInfo::new(1000, 1000);
+
+        let res = fct.do_recv();
+        println!("result {:?}", res);
+        assert!(res.is_ok());
     }
 }
