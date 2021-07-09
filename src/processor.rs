@@ -41,11 +41,18 @@ impl Processor {
                 let account_b = next_account_info(accounts_iter)?;
                 let mint_a = next_account_info(accounts_iter)?;
                 let mint_b = next_account_info(accounts_iter)?;
+                msg!("mint_b {:?}",mint_b);
                 let mint_authority = next_account_info(accounts_iter)?;
-                let spl_id = next_account_info(accounts_iter)?;
+                msg!("mint_authority {:?}",mint_authority);
+                //let spl_id = next_account_info(accounts_iter)?;
 
+                //msg!("spl {:?}",spl_id);
                 let account_a_token_info = SplAccount::unpack(&account_a.data.borrow())?;
                 let account_b_token_info = SplAccount::unpack(&account_b.data.borrow())?;
+
+                msg!("account_a_token_info {:?} ",account_a_token_info);
+                msg!("account_b_token_info {:?}",account_b_token_info);
+                msg!("owner {:?}",owner);
 
                 if account_a_token_info.owner != *owner.key {
                     return Err(ProgramError::IllegalOwner);
@@ -61,7 +68,7 @@ impl Processor {
                 // if mint_a_info.mint_authority != mint_a.key || mint_b_info.mint_authority != mint_b.key {
                 //     return Err(ProgramError::BorshIoError("mint key not equal".to_string()));
                 // }
-
+            
                 let mint_a_authority = mint_a_info
                     .mint_authority
                     .ok_or(ProgramError::InvalidArgument)?;
@@ -73,27 +80,28 @@ impl Processor {
                 {
                     return Err(ProgramError::InvalidAccountData);
                 }
+             
                 account_a_token_info
                     .amount
                     .checked_sub(amount)
                     .ok_or(ProgramError::InsufficientFunds)?;
 
                 let ix = spl_token::instruction::mint_to(
-                    spl_id.key,
+                    &spl_token::id(),
                     mint_b.key,
                     account_b.key,
                     mint_authority.key,
-                    &[owner.key],
+                    &[],
                     amount,
                 )?;
-                SplAccount::pack(account_b_token_info, &mut account_b.data.borrow_mut())?;
+                //SplAccount::pack(account_b_token_info, &mut account_b.data.borrow_mut())?;
                 return invoke(
                     &ix,
                     &[
                         mint_b.clone(),
                         account_b.clone(),
                         mint_authority.clone(),
-                        spl_id.clone(),
+                        //owner.clone(),
                     ],
                 );
             }
@@ -304,6 +312,7 @@ mod tests {
     struct FactoryAccountInfo {
         //nonce: u8,
         user_key: Pubkey,
+        user_key_account:Account,
 
         account_a: Pubkey,
         account_a_account: Account,
@@ -331,6 +340,8 @@ mod tests {
             let account_b_account = Account::new(1000000, 0, &account_b);
 
             let user_key = Pubkey::new_unique();
+            let user_key_account = Account::new(1000000, 0, &user_key);
+
 
             let (token_a_mint_key, mut token_a_mint_account) =
                 create_mint(&spl_token::id(), &user_key, None);
@@ -356,6 +367,7 @@ mod tests {
             FactoryAccountInfo {
                 //nonce,
                 user_key,
+                user_key_account,
 
                 account_a,
                 account_a_account,
@@ -401,6 +413,7 @@ mod tests {
                     &mut self.token_b_account,
                     &mut self.token_a_mint_account,
                     &mut self.token_b_mint_account,
+                    &mut self.user_key_account,
                 ],
             )
         }
