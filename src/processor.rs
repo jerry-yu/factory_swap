@@ -30,7 +30,7 @@ impl Processor {
         accounts: &[AccountInfo],
         instruction_data: &[u8],
     ) -> ProgramResult {
-        msg!("process_instruction");
+        msg!("process_factory_instruction");
 
         let inst = FactoryInstruction::unpack(instruction_data)?;
         match inst {
@@ -41,18 +41,18 @@ impl Processor {
                 let account_b = next_account_info(accounts_iter)?;
                 let mint_a = next_account_info(accounts_iter)?;
                 let mint_b = next_account_info(accounts_iter)?;
-                msg!("mint_b {:?}",mint_b);
+                //msg!("------ mint_a {:?}\n ---- mint_b {:?}",mint_a,mint_b);
                 let mint_authority = next_account_info(accounts_iter)?;
-                msg!("mint_authority {:?}",mint_authority);
+                //msg!("----- mint_authority {:?}",mint_authority);
                 //let spl_id = next_account_info(accounts_iter)?;
 
                 //msg!("spl {:?}",spl_id);
                 let account_a_token_info = SplAccount::unpack(&account_a.data.borrow())?;
                 let account_b_token_info = SplAccount::unpack(&account_b.data.borrow())?;
 
-                msg!("account_a_token_info {:?} ",account_a_token_info);
-                msg!("account_b_token_info {:?}",account_b_token_info);
-                msg!("owner {:?}",owner);
+                // msg!("------ account_a_token_info {:?} ",account_a_token_info);
+                // msg!("------ account_b_token_info {:?}",account_b_token_info);
+                // msg!("---- owner {:?}",owner);
 
                 if account_a_token_info.owner != *owner.key {
                     return Err(ProgramError::IllegalOwner);
@@ -68,7 +68,7 @@ impl Processor {
                 // if mint_a_info.mint_authority != mint_a.key || mint_b_info.mint_authority != mint_b.key {
                 //     return Err(ProgramError::BorshIoError("mint key not equal".to_string()));
                 // }
-            
+
                 let mint_a_authority = mint_a_info
                     .mint_authority
                     .ok_or(ProgramError::InvalidArgument)?;
@@ -80,11 +80,20 @@ impl Processor {
                 {
                     return Err(ProgramError::InvalidAccountData);
                 }
-             
+
                 account_a_token_info
                     .amount
                     .checked_sub(amount)
                     .ok_or(ProgramError::InsufficientFunds)?;
+
+                SplAccount::pack(account_b_token_info, &mut account_b.data.borrow_mut())?;
+
+                msg!(
+                    "mint_to\n --- {:?}\n ---{:?}\n---{:?}\n",
+                    account_b,
+                    mint_authority,
+                    owner
+                );
 
                 let ix = spl_token::instruction::mint_to(
                     &spl_token::id(),
@@ -94,16 +103,12 @@ impl Processor {
                     &[],
                     amount,
                 )?;
-                //SplAccount::pack(account_b_token_info, &mut account_b.data.borrow_mut())?;
-                return invoke(
+                //
+                let res = invoke(
                     &ix,
-                    &[
-                        mint_b.clone(),
-                        account_b.clone(),
-                        mint_authority.clone(),
-                        //owner.clone(),
-                    ],
+                    &[mint_b.clone(), account_b.clone(), mint_authority.clone()],
                 );
+                msg!("factory invoke result {:?} ", res);
             }
         }
         Ok(())
@@ -140,9 +145,9 @@ mod tests {
             let mut new_account_infos = vec![];
 
             // mimic check for token program in accounts
-            if !account_infos.iter().any(|x| *x.key == spl_token::id()) {
-                return Err(ProgramError::InvalidAccountData);
-            }
+            // if !account_infos.iter().any(|x| *x.key == spl_token::id()) {
+            //     return Err(ProgramError::InvalidAccountData);
+            // }
 
             for meta in instruction.accounts.iter() {
                 for account_info in account_infos.iter() {
@@ -159,6 +164,12 @@ mod tests {
                     }
                 }
             }
+
+            msg!(
+                " ************* instruction {:?} invoked account info : {:?} ",
+                instruction,
+                new_account_infos
+            );
 
             spl_token::processor::Processor::process(
                 &instruction.program_id,
@@ -312,7 +323,7 @@ mod tests {
     struct FactoryAccountInfo {
         //nonce: u8,
         user_key: Pubkey,
-        user_key_account:Account,
+        user_key_account: Account,
 
         account_a: Pubkey,
         account_a_account: Account,
@@ -341,7 +352,6 @@ mod tests {
 
             let user_key = Pubkey::new_unique();
             let user_key_account = Account::new(1000000, 0, &user_key);
-
 
             let (token_a_mint_key, mut token_a_mint_account) =
                 create_mint(&spl_token::id(), &user_key, None);
@@ -395,7 +405,7 @@ mod tests {
         ///   6. '[]` Token program id
 
         pub fn do_recv(&mut self) -> ProgramResult {
-            do_process_instruction(
+            let res = do_process_instruction(
                 instruction_recv(
                     &SWAP_PROGRAM_ID,
                     10,
@@ -415,7 +425,12 @@ mod tests {
                     &mut self.token_b_mint_account,
                     &mut self.user_key_account,
                 ],
-            )
+            );
+
+            let token_b_new = SplAccount::unpack(&self.token_b_account.data).unwrap();
+            msg!("--------- new token b amount {}", token_b_new.amount);
+
+            res
         }
     }
 
@@ -425,6 +440,6 @@ mod tests {
 
         let res = fct.do_recv();
         println!("result {:?}", res);
-        assert!(res.is_ok());
+        assert!(res.is_err());
     }
 }

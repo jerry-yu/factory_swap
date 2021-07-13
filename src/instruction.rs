@@ -66,13 +66,13 @@ pub fn instruction_recv(
     let data = FactoryInstruction::Recv(amount).pack();
 
     let accounts = vec![
-        AccountMeta::new(*owner, true),
+        AccountMeta::new(*owner, false),
         AccountMeta::new(*acount_a_token, false),
         AccountMeta::new(*acount_b_token, false),
         AccountMeta::new(*acount_a_mint, false),
         AccountMeta::new(*acount_b_mint, false),
-        AccountMeta::new(*mint_authority_pubkey, false),
-        //AccountMeta::new(spl_token::id(), false),
+        AccountMeta::new(*mint_authority_pubkey, true),
+        AccountMeta::new(spl_token::id(), false),
     ];
 
     Ok(Instruction {
