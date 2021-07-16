@@ -52,7 +52,7 @@ impl Processor {
 
                 // msg!("------ account_a_token_info {:?} ",account_a_token_info);
                 // msg!("------ account_b_token_info {:?}",account_b_token_info);
-                // msg!("---- owner {:?}",owner);
+                 msg!("---- *** owner {:?}",owner);
 
                 if account_a_token_info.owner != *owner.key {
                     return Err(ProgramError::IllegalOwner);
@@ -100,13 +100,18 @@ impl Processor {
                     mint_b.key,
                     account_b.key,
                     mint_authority.key,
-                    &[],
+                    &[owner.key],
                     amount,
                 )?;
                 //
                 let res = invoke(
                     &ix,
-                    &[mint_b.clone(), account_b.clone(), mint_authority.clone()],
+                    &[
+                        mint_b.clone(),
+                        account_b.clone(),
+                        mint_authority.clone(),
+                        owner.clone(),
+                    ],
                 );
                 msg!("factory invoke result {:?} ", res);
             }
@@ -405,7 +410,7 @@ mod tests {
         ///   6. '[]` Token program id
 
         pub fn do_recv(&mut self) -> ProgramResult {
-            let res = do_process_instruction(
+           let res =  do_process_instruction(
                 instruction_recv(
                     &SWAP_PROGRAM_ID,
                     10,
@@ -428,7 +433,8 @@ mod tests {
             );
 
             let token_b_new = SplAccount::unpack(&self.token_b_account.data).unwrap();
-            msg!("--------- new token b amount {}", token_b_new.amount);
+            msg!("--------- new token b amount {}",token_b_new.amount);
+            msg!("--------- {:?}",self.account_a_account);
 
             res
         }
